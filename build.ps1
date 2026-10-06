@@ -48,12 +48,18 @@ function Get-CommandPath($name) {
 }
 
 # ------------------------------------------------------------- tool discovery
-# The bundled runtime location differs between DSH installs, so probe the known
-# layouts instead of hard-coding one. Both are only fallbacks: PATH wins.
-$RuntimeRoots = @(
-    'D:\DeepSeek Harness\resources\runtime\primary-runtime\dependencies',
-    (Join-Path $env:USERPROFILE '.dsh\dsh-runtimes\dsh-primary-runtime\dependencies')
-)
+# The bundled runtime location differs between DSH installs and between hosts,
+# so derive it from the environment rather than hard-coding one machine's
+# install path -- an absolute path from the author's disk is meaningless (and
+# misleading) on any other checkout. These are only fallbacks: PATH wins.
+$RuntimeRoots = @()
+$RuntimeSuffix = 'dsh-runtimes\dsh-primary-runtime\dependencies'
+if ($env:DSH_RUNTIME_ROOT) { $RuntimeRoots += $env:DSH_RUNTIME_ROOT }
+if ($env:DSH_HOME) { $RuntimeRoots += (Join-Path $env:DSH_HOME $RuntimeSuffix) }
+if ($env:USERPROFILE) { $RuntimeRoots += (Join-Path (Join-Path $env:USERPROFILE '.dsh') $RuntimeSuffix) }
+# DSH_HOME and USERPROFILE\.dsh are usually the same directory; probing it twice
+# is harmless, but collapse the duplicate so the list reflects real candidates.
+$RuntimeRoots = @($RuntimeRoots | Select-Object -Unique)
 
 function Find-Bundled($relative) {
     foreach ($root in $RuntimeRoots) {
