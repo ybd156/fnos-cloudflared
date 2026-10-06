@@ -1,0 +1,56 @@
+#!/bin/bash
+# Cloudflare Tunnel for fnOS - runs after the package files are installed.
+#
+# The .fpk archive does not reliably preserve POSIX permission bits, so every
+# executable is re-chmodded here. All operations are idempotent.
+set -u
+
+. "$(dirname "$0")/_lib"
+
+CF_BIN="${APPDEST}/bin/cloudflared"
+SERVER_JS="${APPDEST}/server/server.js"
+VERSION_FILE="${PKGVAR}/VERSION"
+
+# ------------------------------------------------------------------- data dirs
+mkdir -p "${PKGVAR}" "${PKGVAR}/.cloudflared" "${PKGVAR}/tunnels" "${PKGVAR}/logs" ||
+    fail "无法创建应用数据目录 ${PKGVAR}。"
+
+# Holds cert.pem and per-tunnel credentials: keep it private to the app user.
+chmod 700 "${PKGVAR}/.cloudflared" 2>/dev/null || true
+chmod 750 "${PKGVAR}/tunnels" "${PKGVAR}/logs" 2>/dev/null || true
+
+# --------------------------------------------------------------- permissions
+[ -f "${CF_BIN}" ] || fail "应用文件缺失：${CF_BIN}"
+chmod 755 "${CF_BIN}" || fail "无法为 cloudflared 二进制设置可执行权限。"
+chmod 755 "${APPDEST}/bin" 2>/dev/null || true
+chmod 644 "${SERVER_JS}" 2>/dev/null || true
+chmod 755 "${APPDEST}/www" 2>/dev/null || true
+chmod 644 "${APPDEST}/www"/*.html "${APPDEST}/www"/*.css "${APPDEST}/www"/*.js 2>/dev/null || true
+
+# The backend is a small module tree; a module left at mode 0000 by the archive
+# would make require() fail at startup, so normalise the whole directory.
+if [ -d "${APPDEST}/server" ]; then
+    find "${APPDEST}/server" -type d -exec chmod 755 {} + 2>/dev/null || true
+    find "${APPDEST}/server" -type f -exec chmod 644 {} + 2>/dev/null || true
+fi
+
+# ------------------------------------------------------------ binary sanity
+CF_VERSION="$("${CF_BIN}" --version 2>/dev/null | head -n 1 || true)"
+if [ -z "${CF_VERSION}" ]; then
+    fail "cloudflared 二进制无法执行，安装包可能已损坏。"
+fi
+log_info "Bundled ${CF_VERSION}."
+
+printf '%s\n' "${TRIM_APPVER:-unknown}" >"${VERSION_FILE}"
+chmod 644 "${VERSION_FILE}" 2>/dev/null || true
+
+# ------------------------------------------------------------------- settings
+# The install wizard asks whether enabled tunnels should start with the service.
+# Reuse config_callback so the answer lands in config.json the same way as a
+# later change made from the settings page.
+if [ -n "${wizard_auto_start:-}" ] && [ -f "${CMD_DIR}/config_callback" ]; then
+    bash "${CMD_DIR}/config_callback" || log_error "无法保存安装向导中的设置。"
+fi
+
+log_info "Installation of ${APPNAME} ${TRIM_APPVER:-} finished."
+exit 0

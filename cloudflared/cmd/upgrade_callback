@@ -1,0 +1,14 @@
+#!/bin/bash
+# Cloudflare Tunnel for fnOS - runs after an upgrade has replaced the app files.
+# The post-install steps (permissions, data dirs, binary sanity check) are
+# identical, so they are delegated rather than duplicated.
+set -u
+
+. "$(dirname "$0")/_lib"
+
+if [ -f "${CMD_DIR}/install_callback" ]; then
+    exec bash "${CMD_DIR}/install_callback"
+fi
+
+echo "[upgrade_callback] install_callback helper is missing" >&2
+exit 1

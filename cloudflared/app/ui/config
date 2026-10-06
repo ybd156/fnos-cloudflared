@@ -1,0 +1,17 @@
+{
+  ".url": {
+    "cloudflared.main": {
+      "title": "Cloudflare Tunnel",
+      "icon": "images/icon_{0}.png",
+      "type": "iframe",
+      "protocol": "",
+      "gatewayPrefix": "/app/cloudflared",
+      "gatewaySocket": "app.sock",
+      "url": "/app/cloudflared",
+      "allUsers": false,
+      "control": {
+        "accessPerm": "editable"
+      }
+    }
+  }
+}

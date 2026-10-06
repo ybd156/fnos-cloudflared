@@ -1,0 +1,10 @@
+#!/bin/bash
+# Cloudflare Tunnel for fnOS - runs before the package files are installed.
+set -u
+
+. "$(dirname "$0")/_lib"
+
+# Nothing destructive happens here: the previous version may still be running
+# and the real work is done in install_callback once files have landed.
+log_info "Preparing to install ${APPNAME} ${TRIM_APPVER:-}."
+exit 0

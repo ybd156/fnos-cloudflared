@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Cloudflare Tunnel</title>
+  <script>
+    window.__CF_BASE__ = "%%CF_BASE%%";
+  </script>
+  <link rel="icon" href="%%CF_BASE%%/images/icon_64.png">
+  <link rel="stylesheet" href="%%CF_BASE%%/style.css">
+</head>
+
+<body>
+  <a class="skip-link" href="#main">跳到主要内容</a>
+
+  <header class="topbar">
+    <div class="brand">
+      <img src="%%CF_BASE%%/images/icon_64.png" alt="" width="26" height="26">
+      <div class="brand-text">
+        <h1>Cloudflare Tunnel</h1>
+        <p id="brand-sub">飞牛 fnOS 内网穿透</p>
+      </div>
+    </div>
+    <div class="topbar-meta">
+      <span class="pill" id="pill-cf" title="内置 cloudflared 程序状态">cloudflared —</span>
+      <span class="pill" id="pill-account" title="Cloudflare 账户授权状态">账户未登录</span>
+    </div>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="主导航">
+    <button class="tab is-active" data-view="tunnels" role="tab" id="tab-tunnels"
+      aria-controls="view-tunnels" aria-selected="true">隧道</button>
+    <button class="tab" data-view="account" role="tab" id="tab-account"
+      aria-controls="view-account" aria-selected="false">账户</button>
+    <button class="tab" data-view="settings" role="tab" id="tab-settings"
+      aria-controls="view-settings" aria-selected="false">设置</button>
+    <button class="tab" data-view="logs" role="tab" id="tab-logs"
+      aria-controls="view-logs" aria-selected="false">运行日志</button>
+  </nav>
+
+  <main id="main">
+    <!-- ── 隧道 ─────────────────────────────────────────────────────── -->
+    <section class="view is-active" id="view-tunnels" role="tabpanel" aria-labelledby="tab-tunnels" tabindex="-1">
+      <div class="view-head">
+        <div>
+          <h2>隧道</h2>
+          <p class="hint">每个隧道由独立的 cloudflared 进程承载，可单独启停、自动重启。</p>
+        </div>
+        <div class="view-head-actions">
+          <button class="btn" id="btn-refresh">刷新</button>
+          <button class="btn btn-primary" id="btn-add">新建隧道</button>
+        </div>
+      </div>
+
+      <div class="summary hidden" id="tunnel-summary" role="group" aria-label="按状态筛选隧道"></div>
+
+      <div id="tunnel-list" class="cards"></div>
+
+      <div id="tunnel-empty" class="empty hidden">
+        <img src="%%CF_BASE%%/images/icon_256.png" alt="" width="64" height="64">
+        <h3>还没有配置任何隧道</h3>
+        <p>最常用的做法：在 Cloudflare Zero Trust 控制台创建隧道并复制 Token，然后新建一个 Token 隧道。</p>
+        <div class="empty-actions">
+          <button class="btn btn-primary" id="btn-add-empty">新建隧道</button>
+          <button class="btn" data-goto="account">登录 Cloudflare 账户</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── 账户 ─────────────────────────────────────────────────────── -->
+    <section class="view" id="view-account" role="tabpanel" aria-labelledby="tab-account" tabindex="-1">
+      <div class="view-head">
+        <div>
+          <h2>Cloudflare 账户</h2>
+          <p class="hint">登录后可以创建命名隧道、自动写入 DNS 路由、查看隧道连接数。</p>
+        </div>
+      </div>
+
+      <div class="card" id="account-card">
+        <div class="card-body" id="account-body">
+          <p class="hint"><span class="spin"></span> 正在读取账户状态…</p>
+        </div>
+      </div>
+
+      <div class="card hidden" id="account-tunnels-card">
+        <div class="card-head">
+          <h3>账号下的命名隧道</h3>
+          <div class="card-head-actions">
+            <input type="search" id="account-search" class="search" placeholder="筛选隧道…" aria-label="筛选隧道">
+            <button class="btn" id="btn-account-refresh">刷新</button>
+            <button class="btn btn-primary" id="btn-create-tunnel">+ 新建隧道</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div id="account-tunnel-list" class="rows"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── 设置 ─────────────────────────────────────────────────────── -->
+    <section class="view" id="view-settings" role="tabpanel" aria-labelledby="tab-settings" tabindex="-1">
+      <div class="view-head">
+        <div>
+          <h2>全局设置</h2>
+          <p class="hint">对所有隧道生效。修改连接类设置后需要重启隧道才会应用。</p>
+        </div>
+        <div class="view-head-actions">
+          <button class="btn btn-primary" id="btn-save-settings">保存设置</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h3>连接</h3>
+          <span class="hint">影响 cloudflared 与 Cloudflare 边缘的通信方式</span>
+        </div>
+        <div class="card-body field-grid">
+          <label class="field">
+            <span>传输协议</span>
+            <select id="set-protocol">
+              <option value="auto">自动（推荐）</option>
+              <option value="http2">HTTP/2</option>
+              <option value="quic">QUIC</option>
+            </select>
+            <small class="field-help">UDP 被限制时选 HTTP/2。</small>
+          </label>
+          <label class="field">
+            <span>Edge IP 版本</span>
+            <select id="set-edge">
+              <option value="">默认</option>
+              <option value="4">仅 IPv4</option>
+              <option value="6">仅 IPv6</option>
+            </select>
+            <small class="field-help">只有纯 IPv6 或纯 IPv4 网络才需要指定。</small>
+          </label>
+          <label class="field">
+            <span>区域（region）</span>
+            <input type="text" id="set-region" placeholder="留空为自动，例如 us">
+            <small class="field-help">强制连接到指定区域的边缘节点。</small>
+          </label>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h3>日志与监控</h3>
+        </div>
+        <div class="card-body field-grid">
+          <label class="field">
+            <span>日志级别</span>
+            <select id="set-loglevel">
+              <option value="debug">debug</option>
+              <option value="info">info</option>
+              <option value="warn">warn</option>
+              <option value="error">error</option>
+            </select>
+            <small class="field-help">debug 会产生大量日志，仅在排查问题时使用。</small>
+          </label>
+          <label class="field">
+            <span>Metrics 端口</span>
+            <input type="number" id="set-metrics" min="0" max="65535" placeholder="0">
+            <small class="field-help">填 0 表示关闭。开启后仅监听 127.0.0.1。</small>
+          </label>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h3>行为</h3>
+        </div>
+        <div class="card-body">
+          <label class="field switch">
+            <input type="checkbox" id="set-autostart">
+            <span>
+              应用启动时自动启动已启用的隧道
+              <small class="field-help">关闭后，服务重启不会拉起任何隧道。</small>
+            </span>
+          </label>
+          <label class="field switch">
+            <input type="checkbox" id="set-autorestart">
+            <span>
+              进程异常退出时自动重启（指数退避）
+              <small class="field-help">连续失败 10 次后停止重试，避免无意义的循环。</small>
+            </span>
+          </label>
+          <label class="field">
+            <span>附加参数（高级）</span>
+            <input type="text" id="set-extra" placeholder="例如 --retries 5">
+            <small class="field-help">追加到每条 cloudflared 命令的全局参数，留空即可。</small>
+          </label>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h3>cloudflared 程序</h3>
+        </div>
+        <div class="card-body">
+          <div class="kv">
+            <div><span>当前版本</span><strong id="bin-version">—</strong></div>
+            <div><span>程序路径</span><code id="bin-path">—</code></div>
+          </div>
+          <p class="hint">应用升级会覆盖内置程序；此处更新仅对当前安装生效。</p>
+          <button class="btn" id="btn-update-bin">检查并更新到最新版</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── 日志 ─────────────────────────────────────────────────────── -->
+    <section class="view" id="view-logs" role="tabpanel" aria-labelledby="tab-logs" tabindex="-1">
+      <div class="view-head">
+        <div>
+          <h2>应用运行日志</h2>
+          <p class="hint" id="applog-meta">后端服务的运行记录，包含隧道启停与错误信息。</p>
+        </div>
+        <div class="view-head-actions">
+          <button class="btn" id="btn-copy-applog">复制</button>
+          <button class="btn" id="btn-refresh-applog">刷新</button>
+        </div>
+      </div>
+      <pre class="logbox" id="app-log" tabindex="0">加载中…</pre>
+    </section>
+  </main>
+
+  <div class="modal-backdrop hidden" id="modal-backdrop">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div class="modal-head">
+        <h3 id="modal-title">新建隧道</h3>
+        <button class="icon-btn" id="modal-close" aria-label="关闭">×</button>
+      </div>
+      <div class="modal-body" id="modal-body"></div>
+      <div class="modal-foot">
+        <button class="btn" id="modal-cancel">取消</button>
+        <button class="btn btn-primary" id="modal-save">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="%%CF_BASE%%/app.js"></script>
+</body>
+
+</html>

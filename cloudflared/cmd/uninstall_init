@@ -1,0 +1,16 @@
+#!/bin/bash
+# Cloudflare Tunnel for fnOS - runs before the package is removed.
+set -u
+
+. "$(dirname "$0")/_lib"
+
+log_info "Uninstalling ${APPNAME}."
+
+# Stop the service first so no cloudflared child process survives the removal.
+if [ -f "${CMD_DIR}/main" ]; then
+    bash "${CMD_DIR}/main" stop || log_info "Service was not running."
+fi
+
+rm -f "${APPDEST}/app.sock" 2>/dev/null || true
+
+exit 0

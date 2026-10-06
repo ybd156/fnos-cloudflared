@@ -1,0 +1,245 @@
+#!/bin/bash
+# Cloudflare Tunnel for fnOS - service lifecycle (start|stop|status|restart)
+set -u
+
+. "$(dirname "$0")/_lib"
+
+PID_FILE="${PKGVAR}/server.pid"
+LOG_FILE="${PKGVAR}/main.log"
+SERVER_JS="${APPDEST}/server/server.js"
+CF_BIN="${APPDEST}/bin/cloudflared"
+SOCKET_PATH="${APPDEST}/app.sock"
+GATEWAY_PREFIX="/app/${APPNAME}"
+
+# ------------------------------------------------------------ process helpers
+check_process() {
+    local pid="$1"
+    [ -n "${pid}" ] || return 1
+    if [ -r "/proc/${pid}/stat" ]; then
+        local state
+        state=$(awk '{print $3}' "/proc/${pid}/stat" 2>/dev/null)
+        case "${state}" in
+        Z | X) return 1 ;;
+        esac
+    fi
+    kill -0 "${pid}" 2>/dev/null
+}
+
+pid_from_file() {
+    local file="$1"
+    [ -r "${file}" ] || return 0
+    head -n 1 "${file}" 2>/dev/null | tr -d '[:space:]'
+}
+
+process_group_id() {
+    local pid="$1"
+    [ -r "/proc/${pid}/stat" ] || return 0
+    awk '{ sub(/^.*\) /, ""); print $3 }' "/proc/${pid}/stat" 2>/dev/null
+}
+
+process_command_line() {
+    local pid="$1"
+    [ -r "/proc/${pid}/cmdline" ] || return 1
+    tr '\0' ' ' <"/proc/${pid}/cmdline" 2>/dev/null
+}
+
+# Guard against PID reuse: only treat a PID as ours when its command line
+# still points at our own server entry point.
+is_our_server() {
+    local pid="$1"
+    local command_line
+    command_line="$(process_command_line "${pid}")" || return 1
+    case "${command_line}" in
+    *"${SERVER_JS}"*) return 0 ;;
+    esac
+    return 1
+}
+
+stop_pid() {
+    local pid="$1"
+    if ! check_process "${pid}"; then
+        return 0
+    fi
+
+    local group_id
+    group_id=$(process_group_id "${pid}")
+    if [ "${group_id}" = "${pid}" ]; then
+        kill -TERM -- "-${pid}" 2>/dev/null || true
+    else
+        kill -TERM "${pid}" 2>/dev/null || true
+    fi
+
+    local count=0
+    while check_process "${pid}" && [ "${count}" -lt 15 ]; do
+        sleep 1
+        count=$((count + 1))
+    done
+
+    if check_process "${pid}"; then
+        log_info "Process ${pid} did not exit gracefully, sending SIGKILL."
+        if [ "${group_id}" = "${pid}" ]; then
+            kill -KILL -- "-${pid}" 2>/dev/null || true
+        else
+            kill -KILL "${pid}" 2>/dev/null || true
+        fi
+        sleep 1
+    fi
+    return 0
+}
+
+# Kill any of our servers that are not the one recorded in PID_FILE. This keeps
+# a stale process from holding on to app.sock after an upgrade. Never touch the
+# cloudflared children here: they belong to the live server.
+cleanup_orphaned_processes() {
+    local entry pid active_pid
+    active_pid=$(pid_from_file "${PID_FILE}")
+    for entry in /proc/[0-9]*; do
+        pid="${entry##*/}"
+        [ "${pid}" != "$$" ] || continue
+        [ "${pid}" != "${active_pid}" ] || continue
+        if is_our_server "${pid}"; then
+            log_info "Stopping orphaned ${APPNAME} server process ${pid}."
+            stop_pid "${pid}"
+        fi
+    done
+}
+
+# A cloudflared child can outlive its server (crash, SIGKILL, or a shutdown that
+# timed out). Such an orphan keeps holding the tunnel connections while the app
+# can no longer see or stop it, so sweep it -- but only once the server is really
+# gone, otherwise this would kill the children of a live server.
+cleanup_orphaned_cloudflared() {
+    local entry pid command_line
+    if server_running; then
+        return 0
+    fi
+    for entry in /proc/[0-9]*; do
+        pid="${entry##*/}"
+        [ "${pid}" != "$$" ] || continue
+        command_line="$(process_command_line "${pid}")" || continue
+        case "${command_line}" in
+        *"${CF_BIN}"*)
+            log_info "Stopping orphaned cloudflared process ${pid}."
+            stop_pid "${pid}"
+            ;;
+        esac
+    done
+}
+
+server_running() {
+    local pid
+    pid=$(pid_from_file "${PID_FILE}")
+    check_process "${pid}" && is_our_server "${pid}"
+}
+
+# ------------------------------------------------------------------ lifecycle
+start_process() {
+    if server_running; then
+        cleanup_orphaned_processes
+        return 0
+    fi
+
+    local node
+    if ! node=$(find_node); then
+        fail "未找到 Node.js 运行时，请确认依赖应用 nodejs_v24 已正确安装。"
+    fi
+
+    if [ ! -r "${SERVER_JS}" ]; then
+        fail "应用文件缺失：${SERVER_JS}，请尝试重新安装应用。"
+    fi
+
+    mkdir -p "${PKGVAR}" || fail "无法创建数据目录 ${PKGVAR}。"
+    rm -f "${PID_FILE}"
+    rm -f "${SOCKET_PATH}"
+
+    log_info "Starting ${APPNAME} service with ${node}."
+
+    (
+        cd "${APPDEST}" || exit 1
+        export TRIM_APPNAME="${APPNAME}"
+        export TRIM_APPDEST="${APPDEST}"
+        export TRIM_PKGVAR="${PKGVAR}"
+        export TRIM_PKGTMP="${PKGTMP}"
+        export TRIM_PKGETC="${PKGETC}"
+        export TRIM_SERVICE_PORT="${TRIM_SERVICE_PORT:-0}"
+        export GATEWAY_PREFIX="${GATEWAY_PREFIX}"
+        exec nohup "${node}" "${SERVER_JS}" >>"${LOG_FILE}" 2>&1
+    ) &
+    local new_pid=$!
+    printf '%s\n' "${new_pid}" >"${PID_FILE}"
+    chmod 644 "${PID_FILE}" 2>/dev/null || true
+
+    # Give the runtime a moment so an immediate crash is reported to the user
+    # instead of being silently swallowed.
+    local waited=0
+    while [ "${waited}" -lt 10 ]; do
+        if ! check_process "${new_pid}"; then
+            rm -f "${PID_FILE}"
+            fail "Cloudflare Tunnel 服务启动失败，请查看日志 ${LOG_FILE}。"
+        fi
+        if [ -S "${SOCKET_PATH}" ] || [ "${waited}" -ge 3 ]; then
+            break
+        fi
+        sleep 1
+        waited=$((waited + 1))
+    done
+
+    if ! check_process "${new_pid}"; then
+        rm -f "${PID_FILE}"
+        fail "Cloudflare Tunnel 服务启动失败，请查看日志 ${LOG_FILE}。"
+    fi
+
+    log_info "Service started with PID ${new_pid}."
+    return 0
+}
+
+stop_process() {
+    local pid
+    pid=$(pid_from_file "${PID_FILE}")
+    if check_process "${pid}"; then
+        if is_our_server "${pid}"; then
+            log_info "Stopping ${APPNAME} service (PID ${pid})."
+            stop_pid "${pid}"
+        else
+            log_info "PID ${pid} is no longer our server, discarding stale PID file."
+        fi
+    fi
+    rm -f "${PID_FILE}"
+    cleanup_orphaned_processes
+    cleanup_orphaned_cloudflared
+    rm -f "${SOCKET_PATH}"
+    return 0
+}
+
+status_process() {
+    if server_running; then
+        return 0
+    fi
+    rm -f "${PID_FILE}"
+    return 1
+}
+
+case "${1:-}" in
+start)
+    start_process
+    ;;
+stop)
+    stop_process
+    ;;
+restart)
+    stop_process
+    start_process
+    ;;
+status)
+    if status_process; then
+        exit 0
+    fi
+    exit 3
+    ;;
+*)
+    echo "Usage: $0 {start|stop|restart|status}" >&2
+    exit 1
+    ;;
+esac
+
+exit 0

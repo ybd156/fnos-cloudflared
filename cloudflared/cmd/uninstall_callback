@@ -1,0 +1,33 @@
+#!/bin/bash
+# Cloudflare Tunnel for fnOS - runs after the package files have been removed.
+set -u
+
+. "$(dirname "$0")/_lib"
+
+# Best-effort removal of anything that would otherwise be left behind.
+rm -f "${APPDEST}/app.sock" 2>/dev/null || true
+rm -f "${PKGVAR}/server.pid" 2>/dev/null || true
+
+# The uninstall wizard decides whether tunnel definitions and credentials are
+# kept for a future reinstall.
+case "$(printf '%s' "${wizard_remove_data:-false}" | tr '[:upper:]' '[:lower:]')" in
+true | 1 | yes | on)
+    log_info "Removing tunnel definitions, tokens and credentials from ${PKGVAR}."
+    rm -rf "${PKGVAR}/.cloudflared" "${PKGVAR}/tunnels" "${PKGVAR}/logs" 2>/dev/null || true
+    rm -f "${PKGVAR}/config.json" "${PKGVAR}/server.log" "${PKGVAR}/main.log" 2>/dev/null || true
+    # Rotated generations and version markers. The server log rotates to
+    # server.log.1 (up to MAX_APP_LOG_BYTES, 2MB), so without this a "delete my
+    # data" uninstall still left a log generation behind. VERSION and
+    # cloudflared.version are per-install markers that a reinstall rewrites.
+    rm -f "${PKGVAR}/server.log.1" "${PKGVAR}/main.log.1" 2>/dev/null || true
+    rm -f "${PKGVAR}/VERSION" "${PKGVAR}/cloudflared.version" 2>/dev/null || true
+    # Any per-tunnel log or rotated generation not already caught above.
+    rm -f "${PKGVAR}"/*.log "${PKGVAR}"/*.log.1 2>/dev/null || true
+    ;;
+*)
+    log_info "Tunnel definitions and credentials were kept in ${PKGVAR}."
+    ;;
+esac
+
+log_info "${APPNAME} removed."
+exit 0

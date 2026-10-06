@@ -1,0 +1,12 @@
+[
+  {
+    "stepTitle": "升级 Cloudflare Tunnel",
+    "items": [
+      {
+        "type": "tips",
+        "label": "升级说明",
+        "helpText": "升级会替换内置的 cloudflared 客户端程序，已配置的隧道、Token 与账户凭据都会完整保留。升级过程中正在运行的隧道会短暂中断，完成后会自动恢复。"
+      }
+    ]
+  }
+]

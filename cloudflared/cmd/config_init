@@ -1,0 +1,9 @@
+#!/bin/bash
+# Cloudflare Tunnel for fnOS - runs before the settings wizard is displayed.
+set -u
+
+. "$(dirname "$0")/_lib"
+
+# Static defaults live in wizard/config; there is nothing dynamic to prepare.
+log_info "Opening ${APPNAME} settings."
+exit 0

@@ -1,0 +1,10 @@
+# The app targets Linux (fnOS). A Windows checkout with the default
+# core.autocrlf would rewrite every shell script and JS file to CRLF, and a
+# CRLF shell script fails on the NAS with "\r: command not found" -- a failure
+# that never reproduces on the machine that introduced it. Pin LF for all text.
+* text=auto eol=lf
+
+# The bundled cloudflared binary and the icons are not text; never normalise.
+cloudflared/app/bin/cloudflared binary
+*.png binary
+*.fpk binary

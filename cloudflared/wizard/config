@@ -1,0 +1,49 @@
+[
+  {
+    "stepTitle": "Cloudflare Tunnel 设置",
+    "items": [
+      {
+        "type": "switch",
+        "field": "wizard_auto_start",
+        "label": "服务启动时自动运行已启用的隧道",
+        "initValue": "true"
+      },
+      {
+        "type": "switch",
+        "field": "wizard_auto_restart",
+        "label": "隧道异常退出时自动重启",
+        "initValue": "true",
+        "helpText": "使用指数退避重试（5 秒起，最长 60 秒，最多 10 次）。"
+      },
+      {
+        "type": "select",
+        "field": "wizard_log_level",
+        "label": "日志级别",
+        "initValue": "info",
+        "options": [
+          { "label": "debug（最详细）", "value": "debug" },
+          { "label": "info（推荐）", "value": "info" },
+          { "label": "warn", "value": "warn" },
+          { "label": "error（仅错误）", "value": "error" }
+        ]
+      },
+      {
+        "type": "select",
+        "field": "wizard_protocol",
+        "label": "隧道传输协议",
+        "initValue": "auto",
+        "options": [
+          { "label": "自动选择（推荐）", "value": "auto" },
+          { "label": "QUIC（UDP 7844）", "value": "quic" },
+          { "label": "HTTP/2（TCP 7844）", "value": "http2" }
+        ],
+        "helpText": "若网络阻断 UDP，请改为 HTTP/2。"
+      },
+      {
+        "type": "tips",
+        "label": "关于隧道与 Token",
+        "helpText": "隧道的增删改与 Token 管理请在本应用的 Web 界面中完成；此处仅调整服务级参数。修改后需重启应用才能对已运行的隧道生效。"
+      }
+    ]
+  }
+]

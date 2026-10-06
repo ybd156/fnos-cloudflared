@@ -1,0 +1,66 @@
+#!/bin/bash
+# Shared helpers for the fnOS lifecycle scripts.
+#
+# This file is sourced, never executed directly:
+#
+#     . "$(dirname "$0")/_lib"
+#
+# It provides the TRIM_*-derived locations, the logging helpers every script
+# needs, the `fail` that surfaces a message through the App Center, and the
+# Node.js runtime probe. Everything here must stay safe under `set -u`.
+
+APPNAME="${TRIM_APPNAME:-cloudflared}"
+APPDEST="${TRIM_APPDEST:-/var/apps/${APPNAME}/target}"
+PKGVAR="${TRIM_PKGVAR:-/var/apps/${APPNAME}/var}"
+PKGTMP="${TRIM_PKGTMP:-/var/apps/${APPNAME}/tmp}"
+PKGETC="${TRIM_PKGETC:-/var/apps/${APPNAME}/etc}"
+CMD_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || true)"
+[ -n "${CMD_DIR}" ] || CMD_DIR="/var/apps/${APPNAME}/cmd"
+
+# Log lines carry the script name so one app-centre log shows which step spoke.
+CF_SCRIPT="${CF_SCRIPT:-${0##*/}}"
+
+cf_log() {
+    local level="$1"
+    shift
+    printf '[%s] [%s] [%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "${CF_SCRIPT}" "${level}" "$*"
+}
+
+log_info() { cf_log INFO "$@"; }
+log_error() { cf_log ERROR "$@" >&2; }
+
+# Surface a user-visible message through the App Center, then fail.
+fail() {
+    local message="$1"
+    log_error "${message}"
+    if [ -n "${TRIM_TEMP_LOGFILE:-}" ]; then
+        printf '%s\n' "${message}" >"${TRIM_TEMP_LOGFILE}" 2>/dev/null || true
+    fi
+    exit 1
+}
+
+# Dependency applications are NOT added to PATH automatically, so probe the
+# well-known install locations of the nodejs_* runtime apps.
+find_node() {
+    local candidates candidate
+    candidates="${TRIM_NODE_BIN:-}"
+    candidates="${candidates} /var/apps/nodejs_v24/target/bin/node"
+    candidates="${candidates} /var/apps/nodejs_v22/target/bin/node"
+    candidates="${candidates} /var/apps/nodejs_v20/target/bin/node"
+    if [ -n "${TRIM_APPDEST_VOL:-}" ]; then
+        candidates="${candidates} ${TRIM_APPDEST_VOL}/@appcenter/nodejs_v24/bin/node"
+        candidates="${candidates} ${TRIM_APPDEST_VOL}/@appcenter/nodejs_v22/bin/node"
+    fi
+    candidates="${candidates} /usr/local/bin/node /usr/bin/node"
+    for candidate in ${candidates}; do
+        if [ -x "${candidate}" ]; then
+            printf '%s' "${candidate}"
+            return 0
+        fi
+    done
+    if command -v node >/dev/null 2>&1; then
+        command -v node
+        return 0
+    fi
+    return 1
+}

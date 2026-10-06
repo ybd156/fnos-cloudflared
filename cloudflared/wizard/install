@@ -1,0 +1,19 @@
+[
+  {
+    "stepTitle": "安装 Cloudflare Tunnel",
+    "items": [
+      {
+        "type": "tips",
+        "label": "即将安装 Cloudflare Tunnel",
+        "helpText": "本应用内置官方 cloudflared 客户端，可把飞牛 OS 上的服务安全地发布到公网，无需在路由器上做端口映射。安装完成后，请从飞牛 OS 桌面打开应用：可以粘贴 Cloudflare Zero Trust 控制台的隧道 Token，也可以直接创建临时快速隧道，或在应用内登录 Cloudflare 账户进行本地管理。"
+      },
+      {
+        "type": "switch",
+        "field": "wizard_auto_start",
+        "label": "服务启动时自动运行已启用的隧道",
+        "initValue": "true",
+        "helpText": "关闭后，已启用的隧道需要您在应用界面中手动启动。"
+      }
+    ]
+  }
+]

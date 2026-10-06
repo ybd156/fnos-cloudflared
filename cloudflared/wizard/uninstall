@@ -1,0 +1,19 @@
+[
+  {
+    "stepTitle": "卸载 Cloudflare Tunnel",
+    "items": [
+      {
+        "type": "tips",
+        "label": "卸载前请注意",
+        "helpText": "卸载会停止所有隧道并移除客户端程序。已配置的隧道定义、隧道 Token 与 Cloudflare 账户凭据默认会保留在应用数据目录中，重新安装后可继续使用。"
+      },
+      {
+        "type": "switch",
+        "field": "wizard_remove_data",
+        "label": "同时删除隧道配置、Token 与账户凭据",
+        "initValue": "false",
+        "helpText": "开启后无法恢复，请谨慎选择。Cloudflare 控制台中已创建的隧道不会被删除。"
+      }
+    ]
+  }
+]

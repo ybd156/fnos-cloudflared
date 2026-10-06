@@ -1,0 +1,14 @@
+#!/bin/bash
+# Cloudflare Tunnel for fnOS - runs before an upgrade replaces the app files.
+set -u
+
+. "$(dirname "$0")/_lib"
+
+log_info "Upgrading ${APPNAME} from ${TRIM_OLD_APPVER:-unknown} to ${TRIM_APPVER:-unknown}."
+
+# The old binary may be in use; stop the service before files are replaced.
+if [ -f "${CMD_DIR}/main" ]; then
+    bash "${CMD_DIR}/main" stop || log_info "Service was not running before upgrade."
+fi
+
+exit 0
